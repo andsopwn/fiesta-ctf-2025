@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  financial_library_mysql:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    container_name: financial_library_mysql
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: financial_library_backend
+    environment:
+      ORG: org_key
+      API_KEY: sk-proj-key  
+      DB_HOST: financial_library_mysql
+      DB_NAME: financial_library
+      DB_USER: financialuser
+      DB_PASSWORD: financialpass
+      DB_PORT: 3306
+      SECRET_KEY: secret_key
+    depends_on:
+      - financial_library_mysql
+    volumes:
+      - ./pdfs:/pdfs
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  mcp_server:
+    build:
+      context: ./mcp_server
+      dockerfile: Dockerfile
+    container_name: financial_library_mcp
+    environment:
+      ORG: org_key
+      API_KEY: sk-proj-key 
+      DB_HOST: financial_library_mysql
+      DB_NAME: financial_library
+      DB_USER: financialuser
+      DB_PASSWORD: financialpass
+      DB_PORT: 3306
+      SERVER_URL: http://localhost/api/
+    depends_on:
+      - financial_library_mysql
+    volumes:
+      - ./pdfs:/pdfs
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: financial_library_frontend
+    environment:
+      REACT_APP_API_URL: /api
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+

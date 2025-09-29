@@ -1,0 +1,8 @@
+.DS_Store
+*.md
+*.ad1
+시나리오/4-1/scenario4.7z
+침해대응/openthedoor/squashfs.img
+침해대응/openthedoor/partial_decompressed.bin
+시나리오/3-3/exfiltration.pcap
+침해대응/openthedoor/extractions/openwrt-x86-64-generic-squashfs-combined.img.gz.extracted/184/decompressed.bin

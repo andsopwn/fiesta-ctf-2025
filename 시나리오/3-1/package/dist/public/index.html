@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>K-monitor</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        /* fallback if CSS not loaded */
+        .hide {
+            display: none
+        }
+    </style>
+    <script>window.KMONITOR_BASE = location.pathname.replace(/\/$/, '');</script>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <h1>K-monitor</h1>
+            <span id="meta"></span>
+            <span id="healthBadge" class="badge">-</span>
+        </header>
+        <section class="cards cols-6">
+            <div class="card span-2x1">
+                <h3>OS</h3>
+                <div class="kv">
+                    <div><b>hostname</b><span id="osHostname">-</span></div>
+                    <div><b>type</b><span id="osType">-</span></div>
+                    <div><b>release</b><span id="osRelease">-</span></div>
+                    <div><b>arch</b><span id="osArch">-</span></div>
+                    <div><b>ip</b><span id="osIP">-</span></div>
+                    <div><b>cpu</b><span id="osCPU">-</span></div>
+                    <div><b>cores</b><span id="osCores">-</span></div>
+                    <div><b>uptime</b><span id="osUptime">-</span></div>
+                    <div><b>load</b><span id="osLoad">-</span></div>
+                    <div><b>mem</b><span id="osMem">-</span></div>
+                </div>
+            </div>
+            <div class="card span-2x1">
+                <h3>Process</h3>
+                <div class="kv">
+                    <div><b>pid</b><span id="pPid">-</span></div>
+                    <div><b>node</b><span id="pNode">-</span></div>
+                    <div><b>uptime</b><span id="pUptime">-</span></div>
+                    <div><b>user</b><span id="pUser">-</span></div>
+                    <div><b>cwd</b><span id="pCwd">-</span></div>
+                    <div><b>start</b><span id="pStart">-</span></div>
+                    <div><b>exec</b><span id="pExec">-</span></div>
+                    <div><b>flags</b><span id="pFlags">default</span></div>
+                </div>
+            </div>
+            <div class="card span-1x1">
+                <h3>Memory</h3><canvas id="memChart" height="160"></canvas>
+            </div>
+            <div class="card span-1x1">
+                <h3>Disk</h3>
+                <canvas id="diskChart" height="160"></canvas>
+            </div>
+            <div class="card wide">
+                <h3>Load Average</h3><canvas id="loadChart" height="120"></canvas>
+            </div>
+        </section>
+    </div>
+
+    <script type="module">
+        const base = window.KMONITOR_BASE || '/monitor';
+        const j = (p) => fetch(p).then(r => r.json());
+        const loadData = { labels: [], one: [], five: [], fifteen: [] };
+
+        const memCtx = document.getElementById('memChart');
+        const diskCtx = document.getElementById('diskChart');
+        const loadCtx = document.getElementById('loadChart');
+
+        const memChart = new Chart(memCtx, { type: 'doughnut', data: { labels: ['Used', 'Free'], datasets: [{ data: [0, 0], backgroundColor: ['#6366f1', '#c7d2fe'] }] }, options: { plugins: { legend: { position: 'bottom' } } } });
+        const diskChart = new Chart(diskCtx, { type: 'doughnut', data: { labels: ['Used', 'Free'], datasets: [{ data: [0, 0], backgroundColor: ['#0ea5e9', '#bae6fd'] }] }, options: { plugins: { legend: { position: 'bottom' } } } });
+        const loadChart = new Chart(loadCtx, {
+            type: 'line', data: {
+                labels: [], datasets: [
+                    { label: '1m', data: [], borderColor: '#6366f1', tension: .25 },
+                    { label: '5m', data: [], borderColor: '#f59e0b', tension: .25 },
+                    { label: '15m', data: [], borderColor: '#10b981', tension: .25 },
+                ]
+            }, options: { responsive: true, animation: false, scales: { y: { beginAtZero: true } } }
+        });
+
+        async function refresh() {
+            const health = await j(`${base}/api/health`).catch(() => ({ status: 'down' }));
+            document.getElementById('healthBadge').textContent = health.status === 'ok' ? 'HEALTHY' : 'DOWN';
+            document.getElementById('healthBadge').className = 'badge ' + (health.status === 'ok' ? 'ok' : 'down');
+
+            const m = await j(`${base}/api/metrics`);
+            document.getElementById('meta').textContent = `${m.platform} ${m.arch} • ${m.cpuCount} cores`;
+            const used = m.memory.used; const free = m.memory.free;
+            memChart.data.datasets[0].data = [used, free];
+            memChart.update();
+
+            const osInfo = await j(`${base}/api/os`).catch(() => ({}));
+            if (osInfo && osInfo.hostname) {
+                document.getElementById('osHostname').textContent = osInfo.hostname;
+                document.getElementById('osType').textContent = osInfo.type + ' ' + osInfo.platform;
+                document.getElementById('osRelease').textContent = osInfo.release;
+                document.getElementById('osArch').textContent = osInfo.arch;
+                document.getElementById('osIP').textContent = osInfo.primaryIPv4 || '-';
+                document.getElementById('osCPU').textContent = (osInfo.cpus?.model || '-') + (osInfo.cpus?.speedMHz ? ` @ ${osInfo.cpus.speedMHz}MHz` : '');
+                document.getElementById('osCores').textContent = String(osInfo.cpus?.count || '-');
+                document.getElementById('osUptime').textContent = (osInfo.uptimeSec || 0).toFixed(0) + 's';
+                document.getElementById('osLoad').textContent = `1:${(osInfo.loadAvg?.one || 0).toFixed(2)} 5:${(osInfo.loadAvg?.five || 0).toFixed(2)} 15:${(osInfo.loadAvg?.fifteen || 0).toFixed(2)}`;
+                const mt = osInfo.memory || {}; const mu = (mt.total || 0) - (mt.free || 0);
+                document.getElementById('osMem').textContent = `${(mu / 1024 / 1024 / 1024).toFixed(1)}G / ${(mt.total / 1024 / 1024 / 1024).toFixed(1)}G`;
+            }
+
+            const proc = await j(`${base}/api/process`).catch(() => ({}));
+            if (proc && proc.pid) {
+                document.getElementById('pPid').textContent = String(proc.pid);
+                document.getElementById('pNode').textContent = proc.nodeVersion;
+                document.getElementById('pUptime').textContent = (proc.uptimeSec || 0).toFixed(0) + 's';
+                document.getElementById('pUser').textContent = (proc.user?.username || '-') + (proc.user?.isRoot ? ' (root)' : '');
+                document.getElementById('pCwd').textContent = proc.cwd || '-';
+                document.getElementById('pStart').textContent = proc.startTimeIso ? new Date(proc.startTimeIso).toLocaleString() : '-';
+                document.getElementById('pExec').textContent = proc.execPath || '-';
+                let flagsText = 'default';
+                if (proc.hasCustomFlags) {
+                    const flags = (proc.flags || []).join(' ');
+                    flagsText = (flags ? flags + ' ' : '') + (proc.nodeOptions || '');
+                    flagsText = flagsText.trim();
+                }
+                document.getElementById('pFlags').textContent = flagsText || 'default';
+            }
+
+            const disk = await j(`${base}/api/disk`).catch(() => ({ disks: [] }));
+            const totals = (disk.disks || []).reduce((acc, d) => { acc.total += d.total || 0; acc.used += d.used || 0; return acc }, { total: 0, used: 0 });
+            const dfree = Math.max(totals.total - totals.used, 0);
+            diskChart.data.datasets[0].data = [totals.used, dfree];
+            diskChart.update();
+            const now = new Date().toLocaleTimeString();
+            loadData.labels.push(now);
+            loadData.one.push(m.loadAvg.one);
+            loadData.five.push(m.loadAvg.five);
+            loadData.fifteen.push(m.loadAvg.fifteen);
+            if (loadData.labels.length > 30) { ['labels', 'one', 'five', 'fifteen'].forEach(k => loadData[k].shift()); }
+            loadChart.data.labels = loadData.labels;
+            loadChart.data.datasets[0].data = loadData.one;
+            loadChart.data.datasets[1].data = loadData.five;
+            loadChart.data.datasets[2].data = loadData.fifteen;
+            loadChart.update();
+        }
+
+        await refresh();
+        setInterval(refresh, 5000);
+    </script>
+</body>
+
+</html>

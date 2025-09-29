@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+START=95
+USE_PROCD=1
+IFACE="br-lan"
+OBJ="/etc/xdp/bpf.o"
+DAEMON="/usr/sbin/responder"
+start_service() {
+  procd_open_instance
+  procd_set_param command "$DAEMON" -i "$IFACE" -o "$OBJ" -s xdp
+  procd_set_param respawn 5 5 0
+  procd_close_instance
+}

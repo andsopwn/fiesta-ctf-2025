@@ -1,0 +1,2 @@
+/etc/modules.d/drm-exec
+/lib/modules/6.12.45/drm_exec.ko

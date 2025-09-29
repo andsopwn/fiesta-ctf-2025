@@ -1,0 +1,2 @@
+/etc/modules.d/drm-buddy
+/lib/modules/6.12.45/drm_buddy.ko
